@@ -2368,8 +2368,13 @@ describe("shared ACPX engine runtime behavior", () => {
     expect(written.permissions?.defaultMode).toBe("default");
     const allow = written.permissions?.allow;
     expect(Array.isArray(allow)).toBe(true);
-    expect(allow).toContain("Bash(curl:*)");
     expect(allow).toContain(`Bash(${cwd}/scripts/paperclip-issue-update.sh:*)`);
+    // The blanket network/environment pre-approvals are deliberately absent:
+    // `env` + `curl` together pre-authorize reading every secret in the
+    // process environment and POSTing it out, with no human in the loop.
+    expect(allow).not.toContain("Bash(curl:*)");
+    expect(allow).not.toContain("Bash(env:*)");
+    expect(allow).not.toContain("Bash(env)");
     const additionalDirectories = written.permissions?.additionalDirectories as string[] | undefined;
     expect(Array.isArray(additionalDirectories)).toBe(true);
     expect(additionalDirectories).toContain(stateDir);
@@ -2421,12 +2426,15 @@ describe("shared ACPX engine runtime behavior", () => {
     expect(written.statusLine).toEqual({ type: "command", command: "preserve-me" });
     expect(written.permissions?.defaultMode).toBe("acceptEdits");
     expect(written.permissions?.allow).toContain("Bash(npm test:*)");
-    expect(written.permissions?.allow).toContain("Bash(curl:*)");
+    expect(written.permissions?.allow).toContain(
+      `Bash(${cwd}/scripts/paperclip-issue-update.sh:*)`,
+    );
+    expect(written.permissions?.allow).not.toContain("Bash(curl:*)");
     expect(written.permissions?.additionalDirectories).toContain("/Users/example/custom");
     expect(written.permissions?.additionalDirectories).toContain(stateDir);
   });
 
-  it("overrides a user-supplied dontAsk defaultMode so ACPX can route Bash through canUseTool", async () => {
+  it("honors a user-supplied dontAsk defaultMode instead of silently widening it", async () => {
     const root = await makeTempRoot();
     const stateDir = path.join(root, "state");
     const cwd = path.join(root, "worktree");
@@ -2445,12 +2453,43 @@ describe("shared ACPX engine runtime behavior", () => {
     const written = JSON.parse(
       await fs.readFile(path.join(cwd, ".claude", "settings.local.json"), "utf8"),
     ) as { permissions?: { defaultMode?: string } };
-    expect(written.permissions?.defaultMode).toBe("default");
+    expect(written.permissions?.defaultMode).toBe("dontAsk");
 
-    const overrideNote = (meta[0]?.commandNotes as string[] | undefined)?.find((entry) =>
-      entry.includes("overrode user dontAsk"),
+    const notes = meta[0]?.commandNotes as string[] | undefined;
+    expect(notes?.find((entry) => entry.includes("honored user dontAsk"))).toBeTruthy();
+    expect(notes?.find((entry) => entry.includes("overrode user dontAsk"))).toBeFalsy();
+  });
+
+  it("overrides a user-supplied dontAsk defaultMode only when the operator opts in", async () => {
+    const root = await makeTempRoot();
+    const stateDir = path.join(root, "state");
+    const cwd = path.join(root, "worktree");
+    await fs.mkdir(path.join(cwd, ".claude"), { recursive: true });
+    await fs.writeFile(
+      path.join(cwd, ".claude", "settings.local.json"),
+      JSON.stringify({ permissions: { defaultMode: "dontAsk" } }, null, 2),
+      "utf8",
     );
-    expect(overrideNote).toBeTruthy();
+
+    vi.stubEnv("PAPERCLIP_OVERRIDE_USER_PERMISSION_MODE", "1");
+    try {
+      const { meta } = await runExecutor(
+        { agent: "claude", stateDir, cwd },
+        { context: { paperclipWorkspace: { cwd } } },
+      );
+
+      const written = JSON.parse(
+        await fs.readFile(path.join(cwd, ".claude", "settings.local.json"), "utf8"),
+      ) as { permissions?: { defaultMode?: string } };
+      expect(written.permissions?.defaultMode).toBe("default");
+
+      const overrideNote = (meta[0]?.commandNotes as string[] | undefined)?.find((entry) =>
+        entry.includes("overrode user dontAsk"),
+      );
+      expect(overrideNote).toBeTruthy();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("opts the claude agent into ACPX runtime verbose logs but leaves codex/custom agents quiet", async () => {

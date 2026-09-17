@@ -120,7 +120,13 @@
       "react": "^19.2.8",
       "react-dom": "^19.2.8",
       "@codemirror/state": "^6.7.2",
-      "@codemirror/view": "^6.43.11"
+      "@codemirror/view": "^6.43.11",
+    "fast-uri": ">=3.1.6",
+    "undici": ">=6.27.0",
+    "path-to-regexp": ">=8.4.0",
+    "form-data": ">=4.0.6",
+    "js-yaml": ">=4.3.2",
+    "multer": ">=2.3.0"
     }
   }
 }

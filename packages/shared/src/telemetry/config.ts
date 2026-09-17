@@ -81,6 +81,18 @@ export function resolveTelemetryConfig(
     return { enabled: false, ...caps };
   }
 
+  // Fork policy: telemetry is opt-IN, not opt-out. Upstream enables it by
+  // default and ships two hardcoded ingest endpoints
+  // (`telemetry.paperclip.ing` and an AWS API Gateway, see `client.ts`), which
+  // means a self-hosted instance starts talking to third-party infrastructure
+  // before its operator has decided anything. Set `telemetry.enabled: true` in
+  // the Paperclip config, or `PAPERCLIP_TELEMETRY_ENABLED=1`, to turn it on.
+  const explicitlyEnabled =
+    fileConfig?.enabled === true || process.env.PAPERCLIP_TELEMETRY_ENABLED === "1";
+  if (!explicitlyEnabled) {
+    return { enabled: false, ...caps };
+  }
+
   const endpoint = process.env.PAPERCLIP_TELEMETRY_ENDPOINT || undefined;
   return { enabled: true, endpoint, ...caps };
 }

@@ -1516,6 +1516,8 @@ interface PaperclipClaudeSettingsResult {
   additionalDirectories: string[];
   defaultMode: string;
   overrodeDontAsk: boolean;
+  /** The user asked for `dontAsk` and this fork honored it. Runs may be denied tools. */
+  preservedRestrictiveMode: boolean;
 }
 
 function uniqueSorted(values: Array<string | null | undefined>): string[] {
@@ -1523,12 +1525,23 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
 }
 
 // The Claude Code SDK that `claude-agent-acp` runs uses
-// `settingSources: ["user", "project", "local"]`. By writing a per-worktree
-// `.claude/settings.local.json` we override the user's potentially-restrictive
-// `~/.claude/settings.json` (e.g. `defaultMode: "dontAsk"`, which silently
-// denies every non-allowlisted tool and never reaches `canUseTool`), and we
-// widen the SDK's Read sandbox to include the Paperclip state dirs the agent
-// needs to talk to its own control plane.
+// `settingSources: ["user", "project", "local"]`. We write a per-worktree
+// `.claude/settings.local.json` to widen the SDK's Read sandbox to include the
+// Paperclip state dirs the agent needs to talk to its own control plane.
+//
+// Upstream also used this file to override a restrictive user
+// `~/.claude/settings.json` (`defaultMode: "dontAsk"` silently denies every
+// non-allowlisted tool and never reaches `canUseTool`). This fork does not:
+// `dontAsk` is a deliberate operator choice, and silently relaxing it means a
+// run started from an issue body or a chat message gets more authority than
+// the machine's owner granted. Set
+// `PAPERCLIP_OVERRIDE_USER_PERMISSION_MODE=1` to restore the upstream
+// behavior when an unattended run needs it — see recordar.md.
+//
+// The blanket `Bash(curl:*)` / `Bash(env:*)` pre-approvals are gone for the
+// same reason: together they are a ready-made "read every secret in the
+// process environment, then POST it somewhere" primitive that no human ever
+// approved. The narrow control-plane helpers stay.
 async function writePaperclipClaudeSettings(input: {
   cwd: string;
   stateDir: string;
@@ -1544,9 +1557,6 @@ async function writePaperclipClaudeSettings(input: {
     companyRoot,
   ]);
   const paperclipAllow = uniqueSorted([
-    "Bash(curl:*)",
-    "Bash(env:*)",
-    "Bash(env)",
     `Bash(${input.cwd}/scripts/paperclip-issue-update.sh:*)`,
     `Bash(${input.cwd}/scripts/paperclip:*)`,
   ]);
@@ -1578,9 +1588,13 @@ async function writePaperclipClaudeSettings(input: {
   ]);
   const existingDefaultMode =
     typeof existingPerms.defaultMode === "string" ? (existingPerms.defaultMode as string) : "";
-  const defaultMode =
-    existingDefaultMode && existingDefaultMode !== "dontAsk" ? existingDefaultMode : "default";
-  const overrodeDontAsk = existingDefaultMode === "dontAsk";
+  const mayOverrideUserMode = process.env.PAPERCLIP_OVERRIDE_USER_PERMISSION_MODE === "1";
+  const overrodeDontAsk = existingDefaultMode === "dontAsk" && mayOverrideUserMode;
+  const defaultMode = existingDefaultMode
+    ? existingDefaultMode === "dontAsk" && mayOverrideUserMode
+      ? "default"
+      : existingDefaultMode
+    : "default";
 
   const nextPermissions: Record<string, unknown> = {
     ...existingPerms,
@@ -1600,6 +1614,7 @@ async function writePaperclipClaudeSettings(input: {
     additionalDirectories: mergedAdditionalDirectories,
     defaultMode,
     overrodeDontAsk,
+    preservedRestrictiveMode: existingDefaultMode === "dontAsk" && !mayOverrideUserMode,
   };
 }
 
@@ -2024,7 +2039,13 @@ async function buildRuntime(input: {
     });
     skillCommandNotes.push(
       `Wrote Paperclip-managed Claude settings to ${paperclipClaudeSettings.filePath} (defaultMode=${paperclipClaudeSettings.defaultMode}${
-        paperclipClaudeSettings.overrodeDontAsk ? "; overrode user dontAsk" : ""
+        paperclipClaudeSettings.overrodeDontAsk
+          ? "; overrode user dontAsk (PAPERCLIP_OVERRIDE_USER_PERMISSION_MODE=1)"
+          : ""
+      }${
+        paperclipClaudeSettings.preservedRestrictiveMode
+          ? "; honored user dontAsk — tools outside the allow list will be denied"
+          : ""
       }, +${paperclipClaudeSettings.additionalDirectories.length} read root(s), +${paperclipClaudeSettings.allow.length} allow rule(s)).`,
     );
   } else if (acpxAgent === "codex") {

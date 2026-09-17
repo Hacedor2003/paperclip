@@ -365,8 +365,12 @@ export function loadConfig(): Config {
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
     companyDeletionEnabled,
-    telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
-    announcementsEnabled: process.env.PAPERCLIP_ANNOUNCEMENTS_ENABLED !== "false",
+    // Opt-in in this fork (upstream default is `true`). See
+    // packages/shared/src/telemetry/config.ts and recordar.md.
+    telemetryEnabled: fileConfig?.telemetry?.enabled ?? false,
+    // Also opt-in: the announcements feed is an unprompted outbound poll to
+    // upstream infrastructure that advertises this instance's existence.
+    announcementsEnabled: process.env.PAPERCLIP_ANNOUNCEMENTS_ENABLED === "true",
     announcementsFeedUrl: process.env.PAPERCLIP_ANNOUNCEMENTS_FEED_URL?.trim() || "https://pages.paperclip.ing/announcements/v1/current.json",
   };
 }
