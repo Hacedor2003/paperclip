@@ -38,6 +38,21 @@ services:
       PAPERCLIP_DEPLOYMENT_EXPOSURE: "private"
       PAPERCLIP_PUBLIC_URL: "${PAPERCLIP_PUBLIC_URL:-http://localhost:3100}"
       BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET must be set}"
+
+      # ── LLM provider keys ──
+      # One key per agent CLI the image ships (see the `npm install --global`
+      # layer in the Dockerfile). Without these the container starts fine but
+      # every agent lacks credentials, so only the providers you fill in are
+      # usable. A key you leave empty does not break the others.
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"            # Codex
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"      # Claude Code
+      # OpenCode is multi-provider. OpenRouter is the one key that reaches the
+      # most models, and it is what the native runner's default model uses.
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"    # OpenCode / OpenRouter
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"            # Gemini CLI
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"            # Gemini CLI (alternative)
+      KIMI_MODEL_API_KEY: "${KIMI_MODEL_API_KEY:-}"    # Kimi
+      KIMI_MODEL_NAME: "${KIMI_MODEL_NAME:-}"          # Kimi
     volumes:
       - paperclip-data:/paperclip
     depends_on:

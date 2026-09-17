@@ -66,12 +66,17 @@ docker run --name paperclip \
   -e PAPERCLIP_HOME=/paperclip \
   -e OPENAI_API_KEY=sk-... \
   -e ANTHROPIC_API_KEY=sk-... \
+  -e OPENROUTER_API_KEY=sk-or-... \
   -e GEMINI_API_KEY=... \
   -v "$(pwd)/data/docker-paperclip:/paperclip" \
   paperclip-local
 ```
 
 Each adapter reads its provider's standard credentials — for example `ANTHROPIC_API_KEY` (Claude), `OPENAI_API_KEY` (Codex), and `GEMINI_API_KEY` or `GOOGLE_API_KEY` (Gemini). OpenCode is multi-provider and uses whichever provider key you supply.
+
+The image ships five agent CLIs: Claude Code, Codex, OpenCode, Gemini and Kimi. If you only set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`, only Claude and Codex agents have credentials — the other three are installed but unusable. `OPENROUTER_API_KEY` is the highest-leverage single key: it backs OpenCode across hundreds of models, and the native runner's default model is already an `openrouter/...` id.
+
+Keys are not the only route. You can create an agent in the UI and paste a provider key there (**New agent → adapter → provider + API key**), which stores it as a company secret instead of a container-wide variable. OpenRouter is also available as a managed **AI connection** (Connectors → OpenRouter), which binds to OpenCode agents whose model id starts with `openrouter/`.
 
 > **Gemini key restrictions:** Google requires Gemini API keys to be *restricted* to the Gemini API (scoped in the Google Cloud console); unrestricted keys are blocked and `gemini_local` runs will fail with an auth error. Create a restricted key, or authenticate with `gemini auth login` (OAuth) and persist `~/.gemini` via the data volume so the credential survives container restarts.
 
