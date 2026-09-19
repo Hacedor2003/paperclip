@@ -3747,7 +3747,10 @@ export function ModelDropdown({
       return (
         m.id.toLowerCase().includes(q) ||
         m.label.toLowerCase().includes(q) ||
-        provider.toLowerCase().includes(q)
+        provider.toLowerCase().includes(q) ||
+        // Typing "free" narrows to the no-cost models even when neither the id
+        // nor the provider's display name carries the word.
+        (m.free === true && "free".includes(q))
       );
     });
   }, [models, modelSearch, promotedModelIds]);
@@ -3978,9 +3981,14 @@ export function ModelDropdown({
                       onOpenChange(false);
                     }}
                   >
-                    <span className="block w-full text-left truncate" title={m.id}>
+                    <span className="block flex-1 text-left truncate" title={m.id}>
                       {groupByProvider ? extractModelName(m.id) : m.label}
                     </span>
+                    {m.free && (
+                      <Badge variant="secondary" className="ml-2">
+                        Free
+                      </Badge>
+                    )}
                   </button>
                 ))}
               </div>

@@ -52,7 +52,13 @@ import {
   resolveLegacyPaperclipDesiredSkillNames,
   sanitizeInheritedHostEnv,
 } from "@paperclipai/adapter-utils/server-utils";
-import { isOpenCodeUnknownSessionError, parseOpenCodeJsonl } from "./parse.js";
+import {
+  isOpenCodeFreeTierQuotaError,
+  isOpenCodeRateLimitError,
+  isOpenCodeUnknownSessionError,
+  openCodeRetryAfterSeconds,
+  parseOpenCodeJsonl,
+} from "./parse.js";
 import {
   ensureOpenCodeModelConfiguredAndAvailable,
   isTruthyEnvFlag,
@@ -704,6 +710,29 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         `OpenCode exited with code ${synthesizedExitCode ?? -1}`;
       const modelId = model || null;
 
+      // Classify a provider throttle before the result is sealed. Without this
+      // a rate-limited run looks like an ordinary failure and the orchestrator
+      // retries immediately into the same limit — the common outcome on
+      // OpenRouter's free models, whose per-minute and per-day caps an agent
+      // loop reaches quickly.
+      const failed = (synthesizedExitCode ?? 0) !== 0;
+      const throttleInput = {
+        stdout: attempt.proc.stdout,
+        stderr: attempt.proc.stderr,
+        errorMessage: fallbackErrorMessage,
+      };
+      const rateLimited = failed && isOpenCodeRateLimitError(throttleInput);
+      const freeTierQuota = rateLimited && isOpenCodeFreeTierQuotaError(throttleInput);
+      const retryAfterSeconds = rateLimited ? openCodeRetryAfterSeconds(throttleInput) : undefined;
+      const retryNotBefore = retryAfterSeconds !== undefined
+        ? new Date(Date.now() + retryAfterSeconds * 1000).toISOString()
+        : null;
+      const errorFamily = freeTierQuota
+        ? ("provider_quota" as const)
+        : rateLimited
+          ? ("transient_upstream" as const)
+          : null;
+
       return {
         exitCode: synthesizedExitCode,
         signal: attempt.proc.signal,
@@ -711,8 +740,12 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         errorMessage: (synthesizedExitCode ?? 0) === 0 ? null : fallbackErrorMessage,
         // Forward the transport-level error code from the run-disposition seam.
         // A lost duplex control channel surfaces the typed `duplex_channel_lost`
-        // code; every other result carries no code here.
-        errorCode: attempt.proc.errorCode ?? null,
+        // code; every other result carries no code here. A provider throttle has
+        // no transport code of its own, so it names itself here.
+        errorCode: attempt.proc.errorCode
+          ?? (freeTierQuota ? "provider_quota" : rateLimited ? "opencode_transient_upstream" : null),
+        ...(errorFamily ? { errorFamily } : {}),
+        ...(retryNotBefore ? { retryNotBefore } : {}),
         usage: {
           inputTokens: attempt.parsed.usage.inputTokens,
           outputTokens: attempt.parsed.usage.outputTokens,
@@ -729,6 +762,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         resultJson: {
           stdout: attempt.proc.stdout,
           stderr: attempt.proc.stderr,
+          ...(errorFamily ? { errorFamily } : {}),
+          ...(retryNotBefore ? { retryNotBefore, transientRetryNotBefore: retryNotBefore } : {}),
         },
         summary: attempt.parsed.summary,
         clearSession: Boolean(clearSessionOnMissingSession && !attempt.parsed.sessionId),

@@ -99,3 +99,78 @@ export function isOpenCodeUnknownSessionError(stdout: string, stderr: string): b
     haystack,
   );
 }
+
+// OpenCode routes to whatever provider the model id names, so a rate limit can
+// arrive as an HTTP status, as a provider's prose, or as OpenRouter's own
+// free-tier quota wording. The claude adapter has carried an equivalent for
+// paid Anthropic limits since the start; OpenRouter's free models make it
+// load-bearing here, because their per-minute and per-day caps are low enough
+// that an ordinary agent loop hits them.
+const OPENCODE_RATE_LIMIT_RE =
+  /(?:rate[-\s]?limit(?:ed|s)?|rate_limit_error|too\s+many\s+requests|\b429\b|quota\s+exceeded|insufficient_quota|overloaded(?:_error)?|server\s+overloaded|service\s+unavailable|\b503\b|\b529\b|temporarily\s+unavailable|throttl(?:ed|ing)|try\s+again\s+later)/i;
+
+// OpenRouter reports an exhausted free allowance separately from a burst limit:
+// the burst one clears in seconds, this one can mean "come back tomorrow".
+const OPENCODE_FREE_TIER_QUOTA_RE =
+  /(?:free[-\s]?models?[-\s]?per[-\s]?day|free[-\s]?tier\s+(?:limit|quota)|daily\s+(?:limit|quota)\s+(?:reached|exceeded)|add\s+(?:\d+\s+)?credits)/i;
+
+function rateLimitHaystack(stdout: string, stderr: string, errorMessage?: string | null): string {
+  return [stdout, stderr, errorMessage ?? ""]
+    .join("\n")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+/**
+ * A provider-side throttle or exhausted quota, as opposed to a bug in the run.
+ * The caller reports it as a retryable family so the orchestrator waits instead
+ * of burning the task on an error the next attempt would not hit.
+ */
+export function isOpenCodeRateLimitError(input: {
+  stdout: string;
+  stderr: string;
+  errorMessage?: string | null;
+}): boolean {
+  return OPENCODE_RATE_LIMIT_RE.test(
+    rateLimitHaystack(input.stdout, input.stderr, input.errorMessage),
+  );
+}
+
+/**
+ * True when the throttle is an exhausted free allowance rather than a burst
+ * limit. Both are retryable, but this one is `provider_quota`: the wait is
+ * hours, not seconds, and the operator may need to switch model or add credit.
+ */
+export function isOpenCodeFreeTierQuotaError(input: {
+  stdout: string;
+  stderr: string;
+  errorMessage?: string | null;
+}): boolean {
+  const haystack = rateLimitHaystack(input.stdout, input.stderr, input.errorMessage);
+  return OPENCODE_FREE_TIER_QUOTA_RE.test(haystack);
+}
+
+/**
+ * Seconds a provider asked the caller to wait, from a `Retry-After` header or
+ * the `retry after N seconds` prose providers echo into the error body.
+ * Undefined when nothing usable is present — the caller then applies its own
+ * backoff rather than inventing a deadline.
+ */
+export function openCodeRetryAfterSeconds(input: {
+  stdout: string;
+  stderr: string;
+  errorMessage?: string | null;
+}): number | undefined {
+  const haystack = rateLimitHaystack(input.stdout, input.stderr, input.errorMessage);
+  const match =
+    /retry[-\s]?after[":\s]+(\d+(?:\.\d+)?)/i.exec(haystack) ??
+    /(?:try|retry)\s+again\s+in\s+(\d+(?:\.\d+)?)\s*(?:s\b|sec|seconds?)/i.exec(haystack);
+  if (!match) return undefined;
+  const seconds = Number(match[1]);
+  if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+  // A provider that asks for an implausible wait is clamped: a day-long sleep
+  // inside one run is never the right answer.
+  return Math.min(seconds, 3600);
+}
