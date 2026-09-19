@@ -165,7 +165,20 @@ These are set automatically by the server when invoking agents:
 
 ## LLM Provider Keys (for adapters)
 
+One key per agent CLI. Set at least one; an unset key only means that agent has
+no credentials, it does not affect the others.
+
 | Variable | Description |
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Anthropic API key (for Claude Code adapter) |
 | `OPENAI_API_KEY` | OpenAI API key (for Codex adapter) |
+| `OPENROUTER_API_KEY` | OpenRouter API key (for the OpenCode adapter, and for the native runner, whose default model is an `openrouter/...` id). OpenCode is multi-provider, so this single key reaches hundreds of models |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Gemini API key (for the Gemini CLI adapter). Must be restricted to the Gemini API — see [Docker](docker.md) |
+| `KIMI_MODEL_API_KEY` + `KIMI_MODEL_NAME` | Kimi model credentials (for the Kimi adapter). Kimi reads a model/key pair, not a bare key |
+
+Adapters whose CLI the Docker image does not ship (Grok, Cursor, Pi, Hermes)
+need that CLI installed on the execution host before their keys do anything.
+
+You can also supply any of these per agent from the UI instead of the
+environment — **New agent → pick the adapter → provider + API key** — which
+stores the value as a company secret rather than a container-wide variable.

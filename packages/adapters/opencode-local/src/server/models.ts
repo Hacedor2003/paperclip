@@ -5,6 +5,7 @@ import {
   asString,
   ensurePathInEnv,
   runChildProcess,
+  sanitizeInheritedHostEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 import { isValidOpenCodeModelId } from "../index.js";
 
@@ -161,7 +162,7 @@ export async function discoverOpenCodeModels(
   // Prevent OpenCode from writing an opencode.json into the working directory.
   const runtimeEnv = normalizeEnv(
     ensurePathInEnv({
-      ...process.env,
+      ...sanitizeInheritedHostEnv(),
       ...env,
       ...(resolvedHome ? { HOME: resolvedHome } : {}),
       OPENCODE_DISABLE_PROJECT_CONFIG: "true",

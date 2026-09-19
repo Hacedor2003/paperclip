@@ -51,6 +51,7 @@ import {
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   DEFAULT_PAPERCLIP_CONVERSATION_PROMPT_TEMPLATE,
   joinPromptSections,
+  sanitizeInheritedHostEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 import {
   parseLocalProcessFilesystemScope,
@@ -701,7 +702,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   }
   if (configuredHomeIsManaged && configuredCodexHome) {
     const seedEnv = connectorSkillDigest ? {
-      ...process.env, CODEX_HOME: connectorSourceHome ?? resolveManagedCodexHomeDir(process.env, agent.companyId),
+      ...sanitizeInheritedHostEnv(), CODEX_HOME: connectorSourceHome ?? resolveManagedCodexHomeDir(process.env, agent.companyId),
     } : process.env;
     await seedManagedCodexHome(configuredCodexHome, seedEnv, onLog, {
       apiKey: configuredOpenAiApiKey,
@@ -991,7 +992,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       }
     }
     const effectiveEnv = Object.fromEntries(
-      Object.entries({ ...process.env, ...env }).filter(
+      Object.entries({ ...sanitizeInheritedHostEnv(), ...env }).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     );

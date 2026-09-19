@@ -3585,6 +3585,85 @@ export function ensurePathInEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...env, PATH: defaultPathForPlatform() };
 }
 
+// Host-owned credentials that keep the Paperclip server itself running. They
+// are not run inputs: nothing an adapter spawns needs the database password,
+// the auth signing secret or the secrets master key to do its job, and an
+// agent process is a far larger blast radius than the server process — its
+// prompt is assembled from issue bodies, chat messages and webhook payloads
+// that arrive from outside the trust boundary. Mirrors the intent of
+// `sanitizeRuntimeServiceBaseEnv` in the server's workspace runtime, applied
+// at the adapter seam where the CLI is actually spawned.
+//
+// This is a denylist, not an allowlist: agents legitimately need most of the
+// ambient environment (PATH, HOME, locale, proxy settings, and the provider
+// API keys they authenticate with), so an allowlist would break every run.
+const HOST_ONLY_ENV_KEYS = new Set([
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
+  "PAPERCLIP_SECRETS_MASTER_KEY",
+  "PAPERCLIP_SECRETS_MASTER_KEY_FILE",
+  "PAPERCLIP_TOOL_ACTION_SIGNING_SECRET",
+  "PAPERCLIP_ID_CONNECTOR_SIGN_PRIVATE_KEY",
+  "PAPERCLIP_ID_CONNECTOR_SEAL_PRIVATE_KEY",
+  "PAPERCLIP_TELEMETRY_BACKEND_TOKEN",
+  "PAPERCLIP_FEEDBACK_EXPORT_BACKEND_TOKEN",
+  "PAPERCLIP_PAGE_AWS_ACCESS_KEY_ID",
+  "PAPERCLIP_PAGE_AWS_SECRET_ACCESS_KEY",
+  "PAPERCLIP_PAGE_AWS_SESSION_TOKEN",
+  "AWS_SECRET_ACCESS_KEY",
+  "AWS_SESSION_TOKEN",
+]);
+
+// Catches deployment-specific names the explicit set above cannot enumerate
+// (`PAPERCLIP_<THING>_SECRET`, a rotated signing key, and so on).
+const HOST_ONLY_ENV_PATTERNS = [
+  /^PAPERCLIP_.*(SECRET|PRIVATE_KEY|MASTER_KEY|SIGNING_KEY)$/,
+  /^BETTER_AUTH_.*SECRET$/,
+];
+
+const HOST_ENV_PASSTHROUGH_VAR = "PAPERCLIP_AGENT_ENV_PASSTHROUGH";
+
+/**
+ * Operator escape hatch: a comma-separated list of key names that this host
+ * wants agents to receive even though the denylist would strip them (an agent
+ * that genuinely needs the host's AWS session, for example). Deliberately
+ * read from the host environment only — an adapter/user config env cannot
+ * widen it, and neither can a prompt.
+ */
+function hostEnvPassthroughKeys(hostEnv: NodeJS.ProcessEnv): Set<string> {
+  return new Set(
+    (hostEnv[HOST_ENV_PASSTHROUGH_VAR] ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0),
+  );
+}
+
+function isHostOnlyEnvKey(key: string): boolean {
+  if (HOST_ONLY_ENV_KEYS.has(key)) return true;
+  return HOST_ONLY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+/**
+ * Projects the host environment into the shape an agent subprocess may
+ * inherit, dropping the server's own credentials. Call this instead of
+ * spreading `process.env` directly into a spawn env; run-scoped values the
+ * harness mints (`PAPERCLIP_API_KEY` and friends) are merged in afterwards by
+ * the caller and are unaffected.
+ */
+export function sanitizeInheritedHostEnv(
+  hostEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const passthrough = hostEnvPassthroughKeys(hostEnv);
+  const projected: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(hostEnv)) {
+    if (key === HOST_ENV_PASSTHROUGH_VAR) continue;
+    if (isHostOnlyEnvKey(key) && !passthrough.has(key)) continue;
+    projected[key] = value;
+  }
+  return projected;
+}
+
 export async function ensureAbsoluteDirectory(
   cwd: string,
   opts: { createIfMissing?: boolean } = {},

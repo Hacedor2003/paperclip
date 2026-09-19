@@ -246,6 +246,14 @@ export interface AdapterExecutionContext {
 export interface AdapterModel {
   id: string;
   label: string;
+  /**
+   * The provider serves this model at no token cost. Optional and additive: an
+   * adapter that cannot tell leaves it undefined, which is not the same as
+   * `false`. Only catalogs that carry real pricing (OpenRouter today) set it,
+   * and it is a display/selection hint — never an authorization or billing
+   * signal, since a provider can start charging for a model at any time.
+   */
+  free?: boolean;
 }
 
 export type AdapterEnvironmentCheckLevel = "info" | "warn" | "error";

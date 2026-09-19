@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenCodeJsonl, isOpenCodeUnknownSessionError } from "./parse.js";
+import {
+  isOpenCodeFreeTierQuotaError,
+  isOpenCodeRateLimitError,
+  isOpenCodeUnknownSessionError,
+  openCodeRetryAfterSeconds,
+  parseOpenCodeJsonl,
+} from "./parse.js";
 
 describe("parseOpenCodeJsonl", () => {
   it("parses assistant text, usage, cost, and errors", () => {
@@ -73,5 +79,60 @@ describe("parseOpenCodeJsonl", () => {
     expect(isOpenCodeUnknownSessionError("Session not found: s_123", "")).toBe(true);
     expect(isOpenCodeUnknownSessionError("", "unknown session id")).toBe(true);
     expect(isOpenCodeUnknownSessionError("all good", "")).toBe(false);
+  });
+});
+
+describe("provider throttles", () => {
+  const empty = { stdout: "", stderr: "" };
+
+  it("recognizes a throttle however the provider phrases it", () => {
+    for (const stderr of [
+      "Error: 429 Too Many Requests",
+      "rate limit exceeded for this model",
+      "provider returned error: rate_limit_error",
+      "Service Unavailable (503)",
+      "The server is overloaded, try again later",
+      "request was throttled",
+    ]) {
+      expect(isOpenCodeRateLimitError({ ...empty, stderr })).toBe(true);
+    }
+  });
+
+  it("does not mistake an ordinary failure for a throttle", () => {
+    for (const stderr of [
+      "TypeError: cannot read properties of undefined",
+      "fatal: not a git repository",
+      "model not found: vendor/nope",
+      "",
+    ]) {
+      expect(isOpenCodeRateLimitError({ ...empty, stderr })).toBe(false);
+    }
+  });
+
+  it("separates an exhausted free allowance from a burst limit", () => {
+    const daily = {
+      ...empty,
+      stderr: "Rate limit exceeded: free-models-per-day. Add credits to continue.",
+    };
+    expect(isOpenCodeRateLimitError(daily)).toBe(true);
+    expect(isOpenCodeFreeTierQuotaError(daily)).toBe(true);
+
+    const burst = { ...empty, stderr: "429 Too Many Requests" };
+    expect(isOpenCodeRateLimitError(burst)).toBe(true);
+    expect(isOpenCodeFreeTierQuotaError(burst)).toBe(false);
+  });
+
+  it("reads a retry hint when the provider gives one, and clamps an absurd wait", () => {
+    expect(openCodeRetryAfterSeconds({ ...empty, stderr: 'retry-after: 30' })).toBe(30);
+    expect(openCodeRetryAfterSeconds({ ...empty, stderr: "try again in 12 seconds" })).toBe(12);
+    expect(openCodeRetryAfterSeconds({ ...empty, stderr: "retry-after: 999999" })).toBe(3600);
+    expect(openCodeRetryAfterSeconds({ ...empty, stderr: "retry-after: -5" })).toBeUndefined();
+    expect(openCodeRetryAfterSeconds({ ...empty, stderr: "429 Too Many Requests" })).toBeUndefined();
+  });
+
+  it("reads the error message too, not just the streams", () => {
+    expect(
+      isOpenCodeRateLimitError({ ...empty, errorMessage: "Provider error: quota exceeded" }),
+    ).toBe(true);
   });
 });

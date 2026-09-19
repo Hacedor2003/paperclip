@@ -9,6 +9,7 @@ import {
   asStringArray,
   ensurePathInEnv,
   parseObject,
+  sanitizeInheritedHostEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 import {
   describeAdapterExecutionTarget,
@@ -190,7 +191,7 @@ export async function testEnvironment(
         });
       }
     }
-  const runtimeEnv = ensurePathInEnv({ ...process.env, ...env });
+  const runtimeEnv = ensurePathInEnv({ ...sanitizeInheritedHostEnv(), ...env });
 
   try {
     await ensureAdapterExecutionTargetCommandResolvable(command, target, cwd, runtimeEnv);

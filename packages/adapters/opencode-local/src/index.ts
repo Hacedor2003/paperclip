@@ -44,6 +44,21 @@ export const SANDBOX_INSTALL_COMMAND =
 
 export const DEFAULT_OPENCODE_LOCAL_MODEL = "openai/gpt-5.2-codex";
 
+/**
+ * The default for a flow that pairs OpenCode with an OpenRouter key.
+ *
+ * `DEFAULT_OPENCODE_LOCAL_MODEL` routes to OpenAI, so handing it to a run whose
+ * only credential is `OPENROUTER_API_KEY` fails on the first turn. Onboarding
+ * takes an OpenRouter key for this adapter, so it needs a model id OpenRouter
+ * actually serves.
+ *
+ * Kept in step with `DEFAULT_OPENCODE_RUNNER_MODEL` in the server's
+ * `native-runtime/provider-profile.ts`, which is the id already qualified for
+ * OpenCode-over-OpenRouter in this repo. If that constant moves, move this one.
+ */
+export const DEFAULT_OPENCODE_OPENROUTER_MODEL =
+  "openrouter/deepseek/deepseek-v4-flash-0731";
+
 export function isValidOpenCodeModelId(value: unknown): value is string {
   if (typeof value !== "string") return false;
   const trimmed = value.trim();

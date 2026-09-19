@@ -44,6 +44,7 @@ import {
   stringifyPaperclipWakePayload,
   DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
   DEFAULT_PAPERCLIP_CONVERSATION_PROMPT_TEMPLATE,
+  sanitizeInheritedHostEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 import {
   SANDBOX_INSTALL_COMMAND,
@@ -138,7 +139,7 @@ function buildKimiHeadlessEnv(env: Record<string, string>): Record<string, strin
 
 function buildKimiRuntimeEnv(env: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(ensurePathInEnv({ ...process.env, ...buildKimiHeadlessEnv(env) })).filter(
+    Object.entries(ensurePathInEnv({ ...sanitizeInheritedHostEnv(), ...buildKimiHeadlessEnv(env) })).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );

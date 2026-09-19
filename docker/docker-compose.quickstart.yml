@@ -3,8 +3,11 @@
 #
 #   cd docker
 #   export BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
-#   export ANTHROPIC_API_KEY="sk-ant-..."
+#   export ANTHROPIC_API_KEY="sk-ant-..."     # or any other provider key below
 #   docker compose -f docker-compose.quickstart.yml up --build
+#
+# Set at least one provider key. OPENROUTER_API_KEY is the broadest single
+# choice: it backs the OpenCode agent across hundreds of models.
 #
 services:
   paperclip:
@@ -23,8 +26,20 @@ services:
       PAPERCLIP_HOME: "/paperclip"
 
       # ── LLM provider keys (at least one is needed for agents to work) ──
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # One key per agent CLI the image ships (see the `npm install --global`
+      # layer in the Dockerfile). A key you leave empty simply means that agent
+      # has no credentials — it does not break the others.
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"            # Codex
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"      # Claude Code
+      # OpenCode is multi-provider. OpenRouter is the one key that reaches the
+      # most models, and it is what the native runner's default model uses
+      # (openrouter/... — see packages/shared provider-profile.ts).
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"    # OpenCode / OpenRouter
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"            # Gemini CLI
+      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"            # Gemini CLI (alternative)
+      # Kimi reads a model/key pair rather than a bare key.
+      KIMI_MODEL_API_KEY: "${KIMI_MODEL_API_KEY:-}"    # Kimi
+      KIMI_MODEL_NAME: "${KIMI_MODEL_NAME:-}"          # Kimi
 
       # ── Deployment settings ──
       # "authenticated" requires login, "local_trusted" skips auth

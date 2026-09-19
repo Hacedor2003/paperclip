@@ -43,6 +43,12 @@ export interface AgentKey {
 export interface AdapterModel {
   id: string;
   label: string;
+  /**
+   * The provider serves this model at no token cost. Absent when the catalog
+   * does not publish pricing, which is not the same as `false` — only render a
+   * "Free" affordance for an explicit `true`.
+   */
+  free?: boolean;
 }
 
 export interface DetectedAdapterModel {
