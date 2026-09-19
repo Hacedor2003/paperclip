@@ -50,6 +50,11 @@ export const CONNECT_SOURCE_NAMES: Record<string, string> = {
   claude_local: "Claude",
   codex_local: "OpenAI",
   grok_local: "Grok",
+  // The provider whose credential this source asks for, which for OpenCode is
+  // not the harness's own name: it is multi-provider, and the key the connect
+  // step takes is an OpenRouter one. Naming the harness here would label the
+  // field after software the customer is not holding a key for.
+  opencode_local: "OpenRouter",
 };
 
 /** The provider name for a source, falling back to the type when unlisted. */

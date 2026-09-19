@@ -106,7 +106,7 @@ import { DEFAULT_CODEX_LOCAL_BYPASS_APPROVALS_AND_SANDBOX } from "@paperclipai/a
 import { DEFAULT_CURSOR_LOCAL_MODEL } from "@paperclipai/adapter-cursor-local";
 import { DEFAULT_GEMINI_LOCAL_MODEL } from "@paperclipai/adapter-gemini-local";
 import { DEFAULT_KIMI_LOCAL_MODEL } from "@paperclipai/adapter-kimi-local";
-import { DEFAULT_OPENCODE_LOCAL_MODEL, isValidOpenCodeModelId } from "@paperclipai/adapter-opencode-local";
+import { DEFAULT_OPENCODE_OPENROUTER_MODEL, isValidOpenCodeModelId } from "@paperclipai/adapter-opencode-local";
 import {
   canGoBackFromOnboardingStep,
   canJumpToOnboardingStep,
@@ -249,6 +249,12 @@ const MODEL_SOURCE_INLINE_MARKS: Record<string, ComponentType<{ className?: stri
 const API_KEY_ENV_KEYS: Record<string, string> = {
   claude_local: ANTHROPIC_API_KEY_ENV_KEY,
   codex_local: "OPENAI_API_KEY",
+  // OpenCode routes through whichever provider the model id names. Onboarding
+  // pairs it with OpenRouter (see `DEFAULT_OPENCODE_OPENROUTER_MODEL`), so the
+  // key entered on this step is stored under OpenRouter's variable — which is
+  // what makes this step a real alternative to putting the key in the
+  // environment before the container starts.
+  opencode_local: "OPENROUTER_API_KEY",
 };
 
 function apiKeyEnvKeyFor(adapterType: string): string {
@@ -1474,7 +1480,7 @@ function OnboardingWizardInner({
     setSourcePicked(false);
     if (next === "codex_local") return;
     if (next === "opencode_local") {
-      setModel(DEFAULT_OPENCODE_LOCAL_MODEL);
+      setModel(DEFAULT_OPENCODE_OPENROUTER_MODEL);
       return;
     }
     if (next === "gemini_local") {
@@ -1803,7 +1809,10 @@ function OnboardingWizardInner({
           : adapterType === "cursor"
             ? model || DEFAULT_CURSOR_LOCAL_MODEL
             : adapterType === "opencode_local"
-              ? model || DEFAULT_OPENCODE_LOCAL_MODEL
+              // The onboarding credential for OpenCode is an OpenRouter key, so
+              // the fallback has to name a model OpenRouter serves. The
+              // OpenAI-routed default would fail on the first turn here.
+              ? model || DEFAULT_OPENCODE_OPENROUTER_MODEL
               : model,
       command,
       args,
@@ -2641,7 +2650,7 @@ function OnboardingWizardInner({
                         autoConnectStartedRef.current = false;
                         setSourcePicked(true);
                         setAdapterType(id);
-                        if (id === "opencode_local") setModel(DEFAULT_OPENCODE_LOCAL_MODEL);
+                        if (id === "opencode_local") setModel(DEFAULT_OPENCODE_OPENROUTER_MODEL);
                         else if (id !== "codex_local") setModel("");
                         setConnectPhase("collapsing");
                       }}

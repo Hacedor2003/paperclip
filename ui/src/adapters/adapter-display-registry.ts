@@ -116,6 +116,12 @@ const adapterDisplayMap: Record<string, AdapterDisplayInfo> = {
     label: "OpenCode",
     description: "OpenCode multi-provider harness",
     icon: OpenCodeLogoIcon,
+    // Recommended so onboarding's connect step offers a third source. Claude
+    // and Codex both want a subscription or a paid key before the product can
+    // be seen working at all; OpenCode takes one OpenRouter key and reaches
+    // every model behind it, including the free ones. That makes it the route
+    // with no card required, which is the one a first run should offer.
+    recommended: true,
   },
   pi_local: {
     label: "Pi",
